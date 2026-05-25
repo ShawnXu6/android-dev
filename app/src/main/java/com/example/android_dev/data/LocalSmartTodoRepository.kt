@@ -1,6 +1,7 @@
 package com.example.android_dev.data
 
 import android.content.Context
+import com.example.android_dev.domain.CognitiveLoadRecord
 import com.example.android_dev.domain.EmotionalTone
 import com.example.android_dev.domain.EnvironmentContext
 import com.example.android_dev.domain.InputModality
@@ -56,6 +57,50 @@ class LocalSmartTodoRepository(context: Context) {
                 .put("adaptiveMode", signal.adaptiveMode)
                 .toString()
         ).apply()
+    }
+
+    fun saveLoadRecord(record: CognitiveLoadRecord) {
+        val records = loadLoadRecords().toMutableList()
+        records.add(record)
+        val last30Days = System.currentTimeMillis() - (30 * 24 * 60 * 60 * 1000L)
+        val filtered = records.filter { it.timestamp >= last30Days }
+        saveLoadRecords(filtered)
+    }
+
+    fun loadLoadRecords(): List<CognitiveLoadRecord> {
+        val raw = prefs.getString(KEY_LOAD_RECORDS, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            List(array.length()) { index ->
+                val json = array.getJSONObject(index)
+                CognitiveLoadRecord(
+                    timestamp = json.getLong("timestamp"),
+                    hour = json.getInt("hour"),
+                    overall = json.getDouble("overall").toFloat(),
+                    visualLoad = json.getDouble("visualLoad").toFloat(),
+                    memoryLoad = json.getDouble("memoryLoad").toFloat(),
+                    temporalPressure = json.getDouble("temporalPressure").toFloat(),
+                    decisionFatigue = json.getDouble("decisionFatigue").toFloat()
+                )
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun saveLoadRecords(records: List<CognitiveLoadRecord>) {
+        val array = JSONArray()
+        records.forEach { record ->
+            array.put(
+                JSONObject()
+                    .put("timestamp", record.timestamp)
+                    .put("hour", record.hour)
+                    .put("overall", record.overall)
+                    .put("visualLoad", record.visualLoad)
+                    .put("memoryLoad", record.memoryLoad)
+                    .put("temporalPressure", record.temporalPressure)
+                    .put("decisionFatigue", record.decisionFatigue)
+            )
+        }
+        prefs.edit().putString(KEY_LOAD_RECORDS, array.toString()).apply()
     }
 
     private fun SmartTask.toJson(): JSONObject {
@@ -154,5 +199,6 @@ class LocalSmartTodoRepository(context: Context) {
     private companion object {
         const val KEY_TASKS = "tasks"
         const val KEY_SIGNAL = "signal"
+        const val KEY_LOAD_RECORDS = "load_records"
     }
 }

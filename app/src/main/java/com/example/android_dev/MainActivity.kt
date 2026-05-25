@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.android_dev.data.LocalSmartTodoRepository
+import com.example.android_dev.domain.AchievementBadge
 import com.example.android_dev.domain.CognitiveLoadLevel
 import com.example.android_dev.domain.CognitiveSnapshot
 import com.example.android_dev.domain.EmotionalTone
@@ -82,8 +84,11 @@ import com.example.android_dev.domain.ScheduleSlot
 import com.example.android_dev.domain.SmartTask
 import com.example.android_dev.domain.TaskCategory
 import com.example.android_dev.domain.UserCognitiveSignal
+import com.example.android_dev.engine.AchievementEngine
 import com.example.android_dev.engine.CognitiveLoadEngine
 import com.example.android_dev.engine.SmartTaskEngine
+import com.example.android_dev.engine.StatisticsEngine
+import com.example.android_dev.ui.StatisticsScreen
 import com.example.android_dev.ui.theme.AndroiddevTheme
 import java.time.LocalTime
 import kotlin.math.max
@@ -122,6 +127,32 @@ private fun SmartTodoLifeApp() {
     }
     val nextTask = remember(tasks, signal, currentHour) {
         SmartTaskEngine.recommendNextTask(tasks, signal, currentHour)
+    }
+    val loadRecords = remember { repository.loadLoadRecords() }
+    val weeklyReport = remember(tasks, loadRecords) {
+        StatisticsEngine.buildWeeklyReport(tasks, loadRecords)
+    }
+    val heatmapData = remember(tasks) { StatisticsEngine.buildHeatmapData(tasks) }
+    val loadCurve = remember(tasks, signal) {
+        StatisticsEngine.generateLoadRecords(tasks, signal)
+    }
+    val achievements = remember(tasks, loadRecords) {
+        AchievementEngine.evaluateAchievements(tasks, loadRecords)
+    }
+
+    // 保存当前负荷记录
+    LaunchedEffect(tasks, signal, currentHour) {
+        repository.saveLoadRecord(
+            com.example.android_dev.domain.CognitiveLoadRecord(
+                timestamp = System.currentTimeMillis(),
+                hour = currentHour,
+                overall = snapshot.overall,
+                visualLoad = snapshot.visualLoad,
+                memoryLoad = snapshot.memoryLoad,
+                temporalPressure = snapshot.temporalPressure,
+                decisionFatigue = snapshot.decisionFatigue
+            )
+        )
     }
 
     fun persistTasks(updated: List<SmartTask>) {
@@ -193,6 +224,14 @@ private fun SmartTodoLifeApp() {
                     snapshot = snapshot,
                     insights = insights,
                     nextTask = nextTask
+                )
+
+                AppTab.STATISTICS -> StatisticsScreen(
+                    tasks = tasks,
+                    weeklyReport = weeklyReport,
+                    heatmapData = heatmapData,
+                    loadCurve = loadCurve,
+                    achievements = achievements
                 )
             }
         }
@@ -1040,7 +1079,8 @@ private fun InsightLine(label: String, value: String) {
 private enum class AppTab(val label: String, val mark: String) {
     TODAY("今日", "今"),
     TASKS("任务", "待"),
-    INSIGHTS("洞察", "智")
+    INSIGHTS("洞察", "智"),
+    STATISTICS("统计", "统")
 }
 
 private fun List<SmartTask>.toggleCompletion(task: SmartTask): List<SmartTask> {
