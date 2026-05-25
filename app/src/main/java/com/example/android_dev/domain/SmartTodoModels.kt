@@ -109,3 +109,71 @@ data class HabitPlan(
     val reinforcement: String,
     val nextStep: String
 )
+
+// ========== 统计与可视化相关模型 ==========
+
+data class DailyStats(
+    val date: String, // yyyy-MM-dd
+    val totalTasks: Int,
+    val completedTasks: Int,
+    val totalMinutes: Int,
+    val categoryMinutes: Map<TaskCategory, Int>,
+    val avgCognitiveLoad: Float,
+    val peakLoadHour: Int?,
+    val habitCompleted: Int
+) {
+    val completionRate: Float
+        get() = if (totalTasks == 0) 0f else completedTasks.toFloat() / totalTasks
+}
+
+data class WeeklyReport(
+    val weekStart: String, // yyyy-MM-dd
+    val dailyStats: List<DailyStats>,
+    val totalCompleted: Int,
+    val totalTasks: Int,
+    val avgCompletionRate: Float,
+    val categoryDistribution: Map<TaskCategory, Float>,
+    val trend: CompletionTrend,
+    val totalHabitStreak: Int
+)
+
+enum class CompletionTrend {
+    IMPROVING,
+    STABLE,
+    DECLINING
+}
+
+data class CognitiveLoadRecord(
+    val timestamp: Long,
+    val hour: Int,
+    val overall: Float,
+    val visualLoad: Float,
+    val memoryLoad: Float,
+    val temporalPressure: Float,
+    val decisionFatigue: Float
+)
+
+data class AchievementBadge(
+    val id: String,
+    val title: String,
+    val description: String,
+    val icon: String,
+    val category: AchievementCategory,
+    val unlockedAt: Long?,
+    val progress: Float, // 0-1
+    val requirement: String
+)
+
+enum class AchievementCategory(val label: String) {
+    COMPLETION("完成"),
+    HABIT("习惯"),
+    EFFICIENCY("效率"),
+    COGNITIVE("认知"),
+    MILESTONE("里程碑")
+}
+
+data class HeatmapData(
+    val dates: List<String>,
+    val values: Map<String, Int>, // date -> streak count
+    val maxStreak: Int
+)
