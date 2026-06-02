@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.example.android_dev.ui
+package com.example.android_dev.ui.screens
 
 import android.graphics.Canvas
 import androidx.compose.foundation.Canvas
@@ -60,6 +60,7 @@ fun StatisticsScreen(
     weeklyReport: WeeklyReport,
     heatmapData: HeatmapData,
     loadCurve: List<CognitiveLoadRecord>,
+    predictedLoadCurve: List<CognitiveLoadRecord>,
     achievements: List<AchievementBadge>,
     modifier: Modifier = Modifier
 ) {
@@ -72,8 +73,11 @@ fun StatisticsScreen(
     ) {
         WeeklyReportSummary(report = weeklyReport)
         CompletionTrendChart(dailyStats = weeklyReport.dailyStats)
-        CategoryPieChart(categoryDistribution = weeklyReport.categoryDistribution)
-        CognitiveLoadCurve(loadRecords = loadCurve)
+        CategoryPieChart(
+            completedDistribution = weeklyReport.completedCategoryDistribution,
+            pendingDistribution = weeklyReport.pendingCategoryDistribution
+        )
+        CognitiveLoadCurve(realLoadRecords = loadCurve, predictedLoadRecords = predictedLoadCurve)
         HabitHeatmap(heatmapData = heatmapData)
         AchievementPanel(badges = achievements)
         Spacer(modifier = Modifier.height(72.dp))
@@ -107,6 +111,10 @@ fun CompletionTrendChart(
                 Text("近 7 天", style = MaterialTheme.typography.labelMedium, color = onSurfaceVariantColor)
             }
             Spacer(modifier = Modifier.height(12.dp))
+            if (dailyStats.none { it.totalTasks > 0 || it.completedTasks > 0 }) {
+                ChartEmptyState("近 7 天还没有任务完成数据")
+                return@Column
+            }
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,11 +205,14 @@ fun CompletionTrendChart(
 
 @Composable
 fun CategoryPieChart(
-    categoryDistribution: Map<TaskCategory, Float>,
+    completedDistribution: Map<TaskCategory, Float>,
+    pendingDistribution: Map<TaskCategory, Float>,
     modifier: Modifier = Modifier
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val hasCompletedData = completedDistribution.any { (_, value) -> value > 0.01f }
+    val hasPendingData = pendingDistribution.any { (_, value) -> value > 0.01f }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -211,6 +222,10 @@ fun CategoryPieChart(
         Column(modifier = Modifier.padding(16.dp)) {
             Text("时间分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(12.dp))
+            if (!hasCompletedData && !hasPendingData) {
+                ChartEmptyState("暂无已完成或未完成任务的时间分布")
+                return@Column
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -225,11 +240,12 @@ fun CategoryPieChart(
                     val radius = size / 2 * 0.85f
                     var startAngle = -90f
 
-                    categoryDistribution.forEach { (category, percentage) ->
+                    val distribution = if (hasCompletedData) completedDistribution else pendingDistribution
+                    distribution.forEach { (category, percentage) ->
                         if (percentage > 0.01f) {
                             val sweepAngle = percentage * 360f
                             drawArc(
-                                color = category.tint(),
+                                color = category.chartTint(),
                                 startAngle = startAngle,
                                 sweepAngle = sweepAngle,
                                 useCenter = true,
@@ -252,12 +268,32 @@ fun CategoryPieChart(
                         .padding(start = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val sortedEntries = categoryDistribution
-                        .filter { (_, v) -> v > 0.01f }
-                        .toList()
-                        .sortedByDescending { (_, v) -> v }
-                    
-                    sortedEntries.forEach { (category, percentage) ->
+                    Text(
+                        if (hasCompletedData) "已完成" else "未完成",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = onSurfaceVariantColor
+                    )
+                    CategoryLegend(distribution = if (hasCompletedData) completedDistribution else pendingDistribution)
+                    if (hasCompletedData && hasPendingData) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("未完成", style = MaterialTheme.typography.labelLarge, color = onSurfaceVariantColor)
+                        CategoryLegend(distribution = pendingDistribution)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryLegend(distribution: Map<TaskCategory, Float>) {
+    val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val sortedEntries = distribution
+        .filter { (_, v) -> v > 0.01f }
+        .toList()
+        .sortedByDescending { (_, v) -> v }
+
+    sortedEntries.forEach { (category, percentage) ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -265,7 +301,7 @@ fun CategoryPieChart(
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
-                                        .background(category.tint(), RoundedCornerShape(2.dp))
+                                        .background(category.chartTint(), RoundedCornerShape(2.dp))
                                 )
                                 Column {
                                     Text(
@@ -281,10 +317,6 @@ fun CategoryPieChart(
                                 }
                             }
                         }
-                }
-            }
-        }
-    }
 }
 
 // ========== 习惯连续性热力图 ==========
@@ -312,6 +344,10 @@ fun HabitHeatmap(
                 Text("近 30 天", style = MaterialTheme.typography.labelMedium, color = onSurfaceVariantColor)
             }
             Spacer(modifier = Modifier.height(12.dp))
+            if (heatmapData.values.values.all { it == 0 }) {
+                ChartEmptyState("近 30 天还没有习惯打卡记录")
+                return@Column
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -373,12 +409,16 @@ fun HabitHeatmap(
 
 @Composable
 fun CognitiveLoadCurve(
-    loadRecords: List<CognitiveLoadRecord>,
+    realLoadRecords: List<CognitiveLoadRecord>,
+    predictedLoadRecords: List<CognitiveLoadRecord>,
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
+    val predictedColor = MaterialTheme.colorScheme.tertiary
     val surfaceColor = MaterialTheme.colorScheme.surface
     val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val hasRealData = realLoadRecords.isNotEmpty()
+    val hasPredictedData = predictedLoadRecords.isNotEmpty()
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -392,9 +432,13 @@ fun CognitiveLoadCurve(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("认知负荷曲线", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("今日预测", style = MaterialTheme.typography.labelMedium, color = onSurfaceVariantColor)
+                Text("真实 / 预测", style = MaterialTheme.typography.labelMedium, color = onSurfaceVariantColor)
             }
             Spacer(modifier = Modifier.height(12.dp))
+            if (!hasRealData && !hasPredictedData) {
+                ChartEmptyState("暂无认知负荷记录")
+                return@Column
+            }
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -426,8 +470,25 @@ fun CognitiveLoadCurve(
                     size = Size(chartWidth, padding + chartHeight - highLoadY)
                 )
 
-                if (loadRecords.isNotEmpty()) {
-                    val points = loadRecords.map { record ->
+                if (hasPredictedData) {
+                    val points = predictedLoadRecords.map { record ->
+                        val x = padding + (record.hour - 8) / 14f * chartWidth
+                        val y = padding + chartHeight * (1f - record.overall.coerceIn(0f, 1f))
+                        Offset(x, y)
+                    }
+                    for (i in 0 until points.size - 1) {
+                        drawLine(
+                            color = predictedColor.copy(alpha = 0.72f),
+                            start = points[i],
+                            end = points[i + 1],
+                            strokeWidth = 2.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+
+                if (hasRealData) {
+                    val points = realLoadRecords.map { record ->
                         val x = padding + (record.hour - 8) / 14f * chartWidth
                         val y = padding + chartHeight * (1f - record.overall.coerceIn(0f, 1f))
                         Offset(x, y)
@@ -452,7 +513,7 @@ fun CognitiveLoadCurve(
                     }
 
                     points.forEachIndexed { index, point ->
-                        val record = loadRecords[index]
+                        val record = realLoadRecords[index]
                         val pointColor = when {
                             record.overall < 0.32f -> Color(0xFF4CAF50)
                             record.overall < 0.58f -> Color(0xFFFFC107)
@@ -463,7 +524,7 @@ fun CognitiveLoadCurve(
                         drawCircle(color = surfaceColor, radius = 2.dp.toPx(), center = point)
                     }
 
-                    val bestHour = loadRecords.minByOrNull { it.overall }?.hour
+                    val bestHour = realLoadRecords.minByOrNull { it.overall }?.hour
                     bestHour?.let { hour ->
                         val x = padding + (hour - 8) / 14f * chartWidth
                         drawContext.canvas.nativeCanvas.drawText(
@@ -514,6 +575,8 @@ fun CognitiveLoadCurve(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 listOf(
+                    Pair(primaryColor, "真实"),
+                    Pair(predictedColor, "预测"),
                     Pair(Color(0xFF4CAF50), "低负荷"),
                     Pair(Color(0xFFFFC107), "平衡"),
                     Pair(Color(0xFFFF9800), "高负荷"),
@@ -852,7 +915,24 @@ fun DailyStatsCard(
     }
 }
 
-private fun TaskCategory.tint(): Color = when (this) {
+@Composable
+private fun ChartEmptyState(message: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 24.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+private fun TaskCategory.chartTint(): Color = when (this) {
     TaskCategory.WORK -> Color(0xFF2F6F63)
     TaskCategory.STUDY -> Color(0xFF4D65A8)
     TaskCategory.HEALTH -> Color(0xFFB45347)

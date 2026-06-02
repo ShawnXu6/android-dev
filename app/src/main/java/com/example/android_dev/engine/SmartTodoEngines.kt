@@ -7,10 +7,14 @@ import com.example.android_dev.domain.EnvironmentContext
 import com.example.android_dev.domain.HabitPlan
 import com.example.android_dev.domain.InputModality
 import com.example.android_dev.domain.InsightSeverity
+import com.example.android_dev.domain.PriorityFactorScore
+import com.example.android_dev.domain.PriorityScoreBreakdown
+import com.example.android_dev.domain.PriorityWeights
 import com.example.android_dev.domain.ProductivityInsight
 import com.example.android_dev.domain.ScheduleSlot
 import com.example.android_dev.domain.SmartTask
 import com.example.android_dev.domain.TaskCategory
+import com.example.android_dev.domain.TaskRecommendation
 import com.example.android_dev.domain.TimePrediction
 import com.example.android_dev.domain.UserCognitiveSignal
 import java.time.LocalTime
@@ -122,8 +126,31 @@ object SmartTaskEngine {
         )
     }
 
-    fun calculatePriorityScore(task: SmartTask, signal: UserCognitiveSignal, nowHour: Int = LocalTime.now().hour): Float {
-        if (task.isCompleted) return 0f
+    val defaultPriorityWeights = PriorityWeights()
+
+    fun calculatePriorityScore(
+        task: SmartTask,
+        signal: UserCognitiveSignal,
+        nowHour: Int = LocalTime.now().hour,
+        weights: PriorityWeights = defaultPriorityWeights
+    ): Float {
+        return explainPriorityScore(task, signal, nowHour, weights).totalScore
+    }
+
+    fun explainPriorityScore(
+        task: SmartTask,
+        signal: UserCognitiveSignal,
+        nowHour: Int = LocalTime.now().hour,
+        weights: PriorityWeights = defaultPriorityWeights
+    ): PriorityScoreBreakdown {
+        if (task.isCompleted) {
+            return PriorityScoreBreakdown(
+                totalScore = 0f,
+                factors = emptyList(),
+                explanation = "任务已完成，不参与下一步推荐。"
+            )
+        }
+
         val hoursUntilTarget = (task.targetHour - nowHour).coerceIn(-4, 16)
         val urgency = when {
             hoursUntilTarget < 0 -> 0.96f
@@ -133,21 +160,75 @@ object SmartTaskEngine {
         val importance = task.importance / 5f
         val complexity = task.complexity / 5f
         val capabilityFit = (1f - abs(complexity - ((signal.focus + signal.energy) / 2f)) * 0.55f).coerceIn(0.28f, 1f)
-        val habitBoost = if (task.isHabit) 0.08f else 0f
-
-        return ((importance * 0.36f + urgency * 0.30f + complexity * 0.14f + capabilityFit * 0.20f + habitBoost) * 100f)
+        val habitScore = if (task.isHabit) 1f else 0f
+        val factors = listOf(
+            PriorityFactorScore(
+                label = "重要度",
+                score = importance.round2(),
+                weight = weights.importanceWeight,
+                contribution = (importance * weights.importanceWeight).round2(),
+                reason = "任务重要度 ${task.importance}/5"
+            ),
+            PriorityFactorScore(
+                label = "紧急度",
+                score = urgency.round2(),
+                weight = weights.urgencyWeight,
+                contribution = (urgency * weights.urgencyWeight).round2(),
+                reason = urgencyReason(hoursUntilTarget)
+            ),
+            PriorityFactorScore(
+                label = "复杂度",
+                score = complexity.round2(),
+                weight = weights.complexityWeight,
+                contribution = (complexity * weights.complexityWeight).round2(),
+                reason = "任务复杂度 ${task.complexity}/5"
+            ),
+            PriorityFactorScore(
+                label = "能力匹配",
+                score = capabilityFit.round2(),
+                weight = weights.capabilityFitWeight,
+                contribution = (capabilityFit * weights.capabilityFitWeight).round2(),
+                reason = "当前专注和精力与任务复杂度的匹配度"
+            ),
+            PriorityFactorScore(
+                label = "习惯加成",
+                score = habitScore,
+                weight = weights.habitWeight,
+                contribution = (habitScore * weights.habitWeight).round2(),
+                reason = if (task.isHabit) "习惯任务获得连续性加成" else "非习惯任务无加成"
+            )
+        )
+        val totalScore = factors.sumOf { it.contribution.toDouble() }.toFloat()
+            .times(100f)
             .coerceIn(0f, 100f)
             .round1()
+
+        return PriorityScoreBreakdown(
+            totalScore = totalScore,
+            factors = factors,
+            explanation = buildPriorityExplanation(factors)
+        )
     }
 
     fun recommendNextTask(
         tasks: List<SmartTask>,
         signal: UserCognitiveSignal,
-        nowHour: Int = LocalTime.now().hour
+        nowHour: Int = LocalTime.now().hour,
+        weights: PriorityWeights = defaultPriorityWeights
     ): SmartTask? {
+        return recommendNextTaskWithExplanation(tasks, signal, nowHour, weights)?.task
+    }
+
+    fun recommendNextTaskWithExplanation(
+        tasks: List<SmartTask>,
+        signal: UserCognitiveSignal,
+        nowHour: Int = LocalTime.now().hour,
+        weights: PriorityWeights = defaultPriorityWeights
+    ): TaskRecommendation? {
         return tasks
             .filterNot { it.isCompleted }
-            .maxByOrNull { calculatePriorityScore(it, signal, nowHour) }
+            .map { task -> TaskRecommendation(task, explainPriorityScore(task, signal, nowHour, weights)) }
+            .maxByOrNull { it.priority.totalScore }
     }
 
     fun buildSchedule(
@@ -157,7 +238,7 @@ object SmartTaskEngine {
     ): List<ScheduleSlot> {
         val active = tasks
             .filterNot { it.isCompleted }
-            .sortedByDescending { calculatePriorityScore(it, signal, nowHour) }
+            .sortedByDescending { calculatePriorityScore(it, signal, nowHour, defaultPriorityWeights) }
             .take(6)
 
         var cursor = max(nowHour * 60, 8 * 60)
@@ -301,6 +382,27 @@ object SmartTaskEngine {
         val hour = normalized / 60
         val minute = normalized % 60
         return "%02d:%02d".format(hour, minute)
+    }
+
+    private fun urgencyReason(hoursUntilTarget: Int): String {
+        return when {
+            hoursUntilTarget < 0 -> "已超过目标时间，紧急度最高"
+            hoursUntilTarget <= 2 -> "距离目标时间不超过 2 小时"
+            else -> "距离目标时间约 $hoursUntilTarget 小时"
+        }
+    }
+
+    private fun buildPriorityExplanation(factors: List<PriorityFactorScore>): String {
+        val topFactors = factors
+            .filter { it.contribution > 0f }
+            .sortedByDescending { it.contribution }
+            .take(2)
+
+        return if (topFactors.isEmpty()) {
+            "当前没有明显推荐因子。"
+        } else {
+            "主要因为" + topFactors.joinToString("、") { "${it.label}${(it.score * 100).roundToInt()}%" } + "。"
+        }
     }
 }
 

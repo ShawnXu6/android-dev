@@ -1,5 +1,8 @@
 package com.example.android_dev.domain
 
+import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 enum class TaskCategory(val label: String) {
@@ -57,10 +60,20 @@ data class SmartTask(
     val completedAt: Long? = null,
     val isHabit: Boolean = false,
     val streak: Int = 0,
+    val habitId: String? = null,
+    val lastCompletedDate: String? = null,
+    val completionHistory: List<String> = emptyList(),
     val modality: InputModality = InputModality.TEXT
 ) {
     val isCompleted: Boolean
-        get() = completedAt != null
+        get() {
+            if (!isHabit) return completedAt != null
+
+            val today = LocalDate.now().toString()
+            val completedAtDate = completedAt
+                ?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString() }
+            return lastCompletedDate == today || completionHistory.contains(today) || completedAtDate == today
+        }
 }
 
 data class UserCognitiveSignal(
@@ -87,6 +100,37 @@ data class TimePrediction(
     val confidence: Float,
     val uncertaintyMinutes: Int,
     val rationale: String
+)
+
+// 推荐权重配置功能：集中定义任务优先级算法的可调权重。
+data class PriorityWeights(
+    val importanceWeight: Float = 0.36f,
+    val urgencyWeight: Float = 0.30f,
+    val complexityWeight: Float = 0.14f,
+    val capabilityFitWeight: Float = 0.20f,
+    val habitWeight: Float = 0.08f
+)
+
+// 推荐分项功能：描述单个评分因子的原始分、权重、贡献值和解释。
+data class PriorityFactorScore(
+    val label: String,
+    val score: Float,
+    val weight: Float,
+    val contribution: Float,
+    val reason: String
+)
+
+// 推荐评分拆解功能：保存总分、分项贡献和面向用户的推荐解释。
+data class PriorityScoreBreakdown(
+    val totalScore: Float,
+    val factors: List<PriorityFactorScore>,
+    val explanation: String
+)
+
+// 推荐结果功能：把被推荐任务和对应的可解释优先级评分绑定在一起。
+data class TaskRecommendation(
+    val task: SmartTask,
+    val priority: PriorityScoreBreakdown
 )
 
 data class ScheduleSlot(
@@ -118,6 +162,8 @@ data class DailyStats(
     val completedTasks: Int,
     val totalMinutes: Int,
     val categoryMinutes: Map<TaskCategory, Int>,
+    val completedCategoryMinutes: Map<TaskCategory, Int> = emptyMap(),
+    val pendingCategoryMinutes: Map<TaskCategory, Int> = emptyMap(),
     val avgCognitiveLoad: Float,
     val peakLoadHour: Int?,
     val habitCompleted: Int
@@ -133,6 +179,8 @@ data class WeeklyReport(
     val totalTasks: Int,
     val avgCompletionRate: Float,
     val categoryDistribution: Map<TaskCategory, Float>,
+    val completedCategoryDistribution: Map<TaskCategory, Float> = emptyMap(),
+    val pendingCategoryDistribution: Map<TaskCategory, Float> = emptyMap(),
     val trend: CompletionTrend,
     val totalHabitStreak: Int
 )
