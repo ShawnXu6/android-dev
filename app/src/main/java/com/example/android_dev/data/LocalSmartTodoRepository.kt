@@ -117,6 +117,9 @@ class LocalSmartTodoRepository(context: Context) {
             .put("completedAt", completedAt ?: JSONObject.NULL)
             .put("isHabit", isHabit)
             .put("streak", streak)
+            .put("habitId", habitId ?: JSONObject.NULL)
+            .put("lastCompletedDate", lastCompletedDate ?: JSONObject.NULL)
+            .put("completionHistory", JSONArray(completionHistory))
             .put("modality", modality.name)
     }
 
@@ -134,8 +137,19 @@ class LocalSmartTodoRepository(context: Context) {
             completedAt = if (isNull("completedAt")) null else optLong("completedAt"),
             isHabit = optBoolean("isHabit", false),
             streak = optInt("streak", 0).coerceAtLeast(0),
+            habitId = if (isNull("habitId")) null else optString("habitId"),
+            lastCompletedDate = if (isNull("lastCompletedDate")) null else optString("lastCompletedDate"),
+            completionHistory = optStringArray("completionHistory"),
             modality = enumOrDefault(optString("modality"), InputModality.TEXT)
         )
+    }
+
+    private fun JSONObject.optStringArray(key: String): List<String> {
+        val array = optJSONArray(key) ?: return emptyList()
+        return List(array.length()) { index -> array.optString(index) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
     }
 
     private inline fun <reified T : Enum<T>> enumOrDefault(value: String?, default: T): T {

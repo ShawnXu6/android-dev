@@ -11,7 +11,9 @@ import com.example.android_dev.domain.SmartTask
 import com.example.android_dev.domain.TaskCategory
 import com.example.android_dev.domain.UserCognitiveSignal
 import com.example.android_dev.domain.WeeklyReport
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
@@ -21,19 +23,27 @@ object StatisticsEngine {
     fun buildDailyStats(
         tasks: List<SmartTask>,
         loadRecords: List<CognitiveLoadRecord>,
-        date: LocalDate = LocalDate.now()
+        date: LocalDate = LocalDate.now(),
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): DailyStats {
         val dateStr = date.format(dateFormatter)
-        val dayTasks = tasks.filter {
-            val taskDate = LocalDate.ofEpochDay(it.createdAt / (24 * 60 * 60 * 1000))
+        val createdTodayTasks = tasks.filter {
+            val taskDate = it.createdAt.toLocalDate(zoneId)
             taskDate == date
         }
-        val completed = dayTasks.count { it.isCompleted }
+        val dayCompletedTasks = tasks.filter { it.wasCompletedOn(date, zoneId) }
+        val dayTasks = (createdTodayTasks + dayCompletedTasks).distinctBy { it.id }
         val categoryMinutes = TaskCategory.entries.associateWith { cat ->
             dayTasks.filter { it.category == cat }.sumOf { it.estimatedMinutes }
         }
+        val completedCategoryMinutes = TaskCategory.entries.associateWith { cat ->
+            dayCompletedTasks.filter { it.category == cat }.sumOf { it.estimatedMinutes }
+        }
+        val pendingCategoryMinutes = TaskCategory.entries.associateWith { cat ->
+            createdTodayTasks.filter { it.category == cat && !it.wasCompletedOn(date, zoneId) }.sumOf { it.estimatedMinutes }
+        }
         val dayRecords = loadRecords.filter {
-            LocalDate.ofEpochDay(it.timestamp / (24 * 60 * 60 * 1000)) == date
+            it.timestamp.toLocalDate(zoneId) == date
         }
         val avgLoad = if (dayRecords.isEmpty()) 0f else dayRecords.map { it.overall }.average().toFloat()
         val peakHour = dayRecords.groupBy { it.hour }
@@ -43,24 +53,27 @@ object StatisticsEngine {
         return DailyStats(
             date = dateStr,
             totalTasks = dayTasks.size,
-            completedTasks = completed,
-            totalMinutes = dayTasks.sumOf { it.estimatedMinutes },
+            completedTasks = dayCompletedTasks.size,
+            totalMinutes = dayCompletedTasks.sumOf { it.estimatedMinutes },
             categoryMinutes = categoryMinutes,
+            completedCategoryMinutes = completedCategoryMinutes,
+            pendingCategoryMinutes = pendingCategoryMinutes,
             avgCognitiveLoad = avgLoad,
             peakLoadHour = peakHour,
-            habitCompleted = dayTasks.count { it.isHabit && it.isCompleted }
+            habitCompleted = tasks.count { it.isHabit && it.wasHabitCompletedOn(date) }
         )
     }
 
     fun buildWeeklyReport(
         tasks: List<SmartTask>,
         loadRecords: List<CognitiveLoadRecord>,
-        weekOffset: Int = 0
+        weekOffset: Int = 0,
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): WeeklyReport {
-        val today = LocalDate.now()
+        val today = LocalDate.now(zoneId)
         val weekStart = today.minusDays((today.dayOfWeek.value - 1 + weekOffset * 7).toLong())
         val dailyStats = (0..6).map { dayOffset ->
-            buildDailyStats(tasks, loadRecords, weekStart.plusDays(dayOffset.toLong()))
+            buildDailyStats(tasks, loadRecords, weekStart.plusDays(dayOffset.toLong()), zoneId)
         }
 
         val totalCompleted = dailyStats.sumOf { it.completedTasks }
@@ -69,9 +82,11 @@ object StatisticsEngine {
 
         val categoryDistribution = TaskCategory.entries.associateWith { cat ->
             val total = dailyStats.sumOf { it.categoryMinutes[cat] ?: 0 }
-            val grandTotal = dailyStats.sumOf { it.totalMinutes }
+            val grandTotal = dailyStats.sumOf { it.categoryMinutes.values.sum() }
             if (grandTotal == 0) 0f else total.toFloat() / grandTotal
         }
+        val completedCategoryDistribution = buildCategoryDistribution(dailyStats) { it.completedCategoryMinutes }
+        val pendingCategoryDistribution = buildCategoryDistribution(dailyStats) { it.pendingCategoryMinutes }
 
         val trend = computeTrend(dailyStats)
         val totalHabitStreak = tasks.filter { it.isHabit }.sumOf { it.streak }
@@ -83,21 +98,23 @@ object StatisticsEngine {
             totalTasks = totalTasks,
             avgCompletionRate = avgCompletionRate,
             categoryDistribution = categoryDistribution,
+            completedCategoryDistribution = completedCategoryDistribution,
+            pendingCategoryDistribution = pendingCategoryDistribution,
             trend = trend,
             totalHabitStreak = totalHabitStreak
         )
     }
 
-    fun buildHeatmapData(tasks: List<SmartTask>, days: Int = 30): HeatmapData {
-        val today = LocalDate.now()
+    fun buildHeatmapData(
+        tasks: List<SmartTask>,
+        days: Int = 30,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): HeatmapData {
+        val today = LocalDate.now(zoneId)
         val dates = (0 until days).map { today.minusDays(it.toLong()).format(dateFormatter) }.reversed()
         val values = dates.associateWith { dateStr ->
             val date = LocalDate.parse(dateStr, dateFormatter)
-            val dayTasks = tasks.filter {
-                val taskDate = LocalDate.ofEpochDay(it.createdAt / (24 * 60 * 60 * 1000))
-                taskDate == date
-            }
-            dayTasks.count { it.isHabit && it.isCompleted }
+            tasks.count { it.isHabit && it.wasHabitCompletedOn(date) }
         }
         val maxStreak = values.values.maxOrNull() ?: 0
 
@@ -110,20 +127,21 @@ object StatisticsEngine {
 
     fun computeLoadCurve(
         loadRecords: List<CognitiveLoadRecord>,
-        date: LocalDate = LocalDate.now()
+        date: LocalDate = LocalDate.now(),
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): List<CognitiveLoadRecord> {
         return loadRecords
-            .filter { LocalDate.ofEpochDay(it.timestamp / (24 * 60 * 60 * 1000)) == date }
+            .filter { it.timestamp.toLocalDate(zoneId) == date }
             .sortedBy { it.hour }
     }
 
     fun generateLoadRecords(
         tasks: List<SmartTask>,
         signal: UserCognitiveSignal,
-        hours: IntRange = 8..22
+        hours: IntRange = 8..22,
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): List<CognitiveLoadRecord> {
-        val now = System.currentTimeMillis()
-        val dayStart = LocalDate.now().atStartOfDay().toEpochSecond(java.time.ZoneOffset.UTC) * 1000
+        val dayStart = LocalDate.now(zoneId).startOfDayMillis(zoneId)
 
         return hours.map { hour ->
             val simulatedTasks = tasks.filterNot { it.isCompleted }.take((hour - 8).coerceIn(0, 6))
@@ -166,6 +184,17 @@ object StatisticsEngine {
             diff > 0.08 -> CompletionTrend.IMPROVING
             diff < -0.08 -> CompletionTrend.DECLINING
             else -> CompletionTrend.STABLE
+        }
+    }
+
+    private fun buildCategoryDistribution(
+        dailyStats: List<DailyStats>,
+        selector: (DailyStats) -> Map<TaskCategory, Int>
+    ): Map<TaskCategory, Float> {
+        val grandTotal = dailyStats.sumOf { stats -> selector(stats).values.sum() }
+        return TaskCategory.entries.associateWith { cat ->
+            val total = dailyStats.sumOf { stats -> selector(stats)[cat] ?: 0 }
+            if (grandTotal == 0) 0f else total.toFloat() / grandTotal
         }
     }
 }
@@ -296,29 +325,26 @@ object AchievementEngine {
 
     fun evaluateAchievements(
         tasks: List<SmartTask>,
-        loadRecords: List<CognitiveLoadRecord>
+        loadRecords: List<CognitiveLoadRecord>,
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): List<AchievementBadge> {
         val completedTasks = tasks.filter { it.isCompleted }
         val completedCount = completedTasks.size
         val maxHabitStreak = tasks.filter { it.isHabit }.maxOfOrNull { it.streak } ?: 0
         val categoriesWithCompletions = completedTasks.map { it.category }.distinct().size
         val hasPerfectDay = tasks
-            .groupBy { LocalDate.ofEpochDay(it.createdAt / (24 * 60 * 60 * 1000)) }
+            .groupBy { it.createdAt.toLocalDate(zoneId) }
             .any { (_, dayTasks) ->
                 dayTasks.all { it.isCompleted } && dayTasks.isNotEmpty()
             }
         val hasEarlyTask = completedTasks.any { task ->
-            task.completedAt?.let {
-                java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneOffset.UTC).toLocalTime().hour < 9
-            } == true
+            task.completedAt?.toLocalHour(zoneId)?.let { it < 9 } == true
         }
         val hasLateTask = completedTasks.any { task ->
-            task.completedAt?.let {
-                java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneOffset.UTC).toLocalTime().hour >= 22
-            } == true
+            task.completedAt?.toLocalHour(zoneId)?.let { it >= 22 } == true
         }
         val lowLoadDays = loadRecords
-            .groupBy { it.timestamp / (24 * 60 * 60 * 1000) }
+            .groupBy { it.timestamp.toLocalDate(zoneId) }
             .count { (_, records) ->
                 records.all { it.overall < 0.32f } && records.isNotEmpty()
             }
@@ -355,4 +381,26 @@ object AchievementEngine {
         if (badges.isEmpty()) return 0f
         return badges.map { it.progress }.average().toFloat()
     }
+
+}
+
+private fun SmartTask.wasHabitCompletedOn(date: LocalDate): Boolean {
+    return completionHistory.contains(date.toString()) || lastCompletedDate == date.toString()
+}
+
+private fun SmartTask.wasCompletedOn(date: LocalDate, zoneId: ZoneId): Boolean {
+    if (isHabit) return wasHabitCompletedOn(date)
+    return completedAt?.toLocalDate(zoneId) == date
+}
+
+private fun Long.toLocalDate(zoneId: ZoneId): LocalDate {
+    return Instant.ofEpochMilli(this).atZone(zoneId).toLocalDate()
+}
+
+private fun Long.toLocalHour(zoneId: ZoneId): Int {
+    return Instant.ofEpochMilli(this).atZone(zoneId).toLocalTime().hour
+}
+
+private fun LocalDate.startOfDayMillis(zoneId: ZoneId): Long {
+    return atStartOfDay(zoneId).toInstant().toEpochMilli()
 }
