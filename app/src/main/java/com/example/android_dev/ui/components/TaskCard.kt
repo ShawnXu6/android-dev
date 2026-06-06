@@ -34,13 +34,14 @@ import com.example.android_dev.domain.UserCognitiveSignal
 import com.example.android_dev.engine.SmartTaskEngine
 import kotlin.math.roundToInt
 
-// 任务卡片功能：展示单个任务的优先级、预测耗时、目标时间和操作按钮。
+// 任务卡片功能：展示单个任务的优先级、预测耗时、目标时间和操作按钮（完成、编辑、删除）。
 @Composable
 fun TaskCard(
     task: SmartTask,
     signal: UserCognitiveSignal,
     onToggleTask: () -> Unit,
-    onDeleteTask: () -> Unit
+    onDeleteTask: () -> Unit,
+    onEditTask: (SmartTask) -> Unit = {}
 ) {
     val priority = SmartTaskEngine.explainPriorityScore(task, signal)
     val prediction = SmartTaskEngine.predictTime(task, signal)
@@ -104,6 +105,9 @@ fun TaskCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
+                    TextButton(onClick = { onEditTask(task) }) {
+                        Text("编辑")
+                    }
                     TextButton(onClick = onDeleteTask) {
                         Text("删除")
                     }
