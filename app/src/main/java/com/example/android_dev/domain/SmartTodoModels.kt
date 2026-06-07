@@ -63,7 +63,8 @@ data class SmartTask(
     val habitId: String? = null,
     val lastCompletedDate: String? = null,
     val completionHistory: List<String> = emptyList(),
-    val modality: InputModality = InputModality.TEXT
+    val modality: InputModality = InputModality.TEXT,
+    val reminderTime: Int? = null
 ) {
     val isCompleted: Boolean
         get() {
