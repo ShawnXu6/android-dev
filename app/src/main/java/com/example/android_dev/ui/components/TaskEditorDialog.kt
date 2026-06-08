@@ -1,7 +1,8 @@
-﻿@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.example.android_dev.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,20 +40,27 @@ import com.example.android_dev.engine.SmartTaskEngine
 import com.example.android_dev.ui.components.hourLabel
 import kotlin.math.roundToInt
 
-// 任务编辑弹窗功能：收集新任务参数，并根据当前用户状态实时估算耗时。
+// 任务编辑弹窗功能：支持新建和编辑任务，收集任务参数并根据当前用户状态实时估算耗时。
 @Composable
 fun TaskEditorDialog(
     signal: UserCognitiveSignal,
     onDismiss: () -> Unit,
-    onCreate: (SmartTask) -> Unit
+    onCreate: (SmartTask) -> Unit,
+    onUpdate: ((SmartTask) -> Unit)? = null,
+    task: SmartTask? = null
 ) {
-    var title by rememberSaveable { mutableStateOf("") }
-    var note by rememberSaveable { mutableStateOf("") }
-    var categoryName by rememberSaveable { mutableStateOf(TaskCategory.WORK.name) }
-    var importance by rememberSaveable { mutableStateOf(3f) }
-    var complexity by rememberSaveable { mutableStateOf(3f) }
-    var targetHour by rememberSaveable { mutableStateOf(10f) }
-    var isHabit by rememberSaveable { mutableStateOf(false) }
+    val isEditMode = task != null
+    
+    var title by rememberSaveable { mutableStateOf(task?.title ?: "") }
+    var note by rememberSaveable { mutableStateOf(task?.description ?: "") }
+    var categoryName by rememberSaveable { mutableStateOf(task?.category?.name ?: TaskCategory.WORK.name) }
+    var importance by rememberSaveable { mutableStateOf((task?.importance ?: 3).toFloat()) }
+    var complexity by rememberSaveable { mutableStateOf((task?.complexity ?: 3).toFloat()) }
+    var targetHour by rememberSaveable { mutableStateOf((task?.targetHour ?: 10).toFloat()) }
+    var isHabit by rememberSaveable { mutableStateOf(task?.isHabit ?: false) }
+    var reminderEnabled by rememberSaveable { mutableStateOf(task?.reminderTime != null) }
+    var reminderMinutes by rememberSaveable { mutableStateOf((task?.reminderTime ?: 0).toFloat()) }
+    
     val category = TaskCategory.entries.first { it.name == categoryName }
     val estimate = remember(title, note, category, complexity, signal) {
         SmartTaskEngine.estimateMinutes(title, note, category, complexity.roundToInt(), signal)
@@ -60,7 +68,7 @@ fun TaskEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("新建智能任务") },
+        title = { Text(if (isEditMode) "编辑任务" else "新建智能任务") },
         text = {
             Column(
                 modifier = Modifier
@@ -106,6 +114,17 @@ fun TaskEditorDialog(
                     Text("作为微习惯追踪")
                     Switch(checked = isHabit, onCheckedChange = { isHabit = it })
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("设置提醒")
+                    Switch(checked = reminderEnabled, onCheckedChange = { reminderEnabled = it })
+                }
+                AnimatedVisibility(visible = reminderEnabled) {
+                    DialogSlider("提前提醒分钟数", reminderMinutes, " ${reminderMinutes.roundToInt()} 分钟") { reminderMinutes = it }
+                }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant
@@ -122,21 +141,33 @@ fun TaskEditorDialog(
             Button(
                 enabled = title.isNotBlank(),
                 onClick = {
-                    onCreate(
-                        SmartTask(
-                            title = title.trim(),
-                            description = note.trim(),
-                            category = category,
-                            estimatedMinutes = estimate,
-                            importance = importance.roundToInt().coerceIn(1, 5),
-                            complexity = complexity.roundToInt().coerceIn(1, 5),
-                            targetHour = targetHour.roundToInt().coerceIn(0, 23),
-                            isHabit = isHabit
-                        )
+                    val reminder = if (reminderEnabled) reminderMinutes.roundToInt().coerceIn(0, 1440) else null
+                    val taskData = SmartTask(
+                        id = task?.id ?: "",
+                        title = title.trim(),
+                        description = note.trim(),
+                        category = category,
+                        estimatedMinutes = estimate,
+                        importance = importance.roundToInt().coerceIn(1, 5),
+                        complexity = complexity.roundToInt().coerceIn(1, 5),
+                        targetHour = targetHour.roundToInt().coerceIn(0, 23),
+                        isHabit = isHabit,
+                        createdAt = task?.createdAt ?: System.currentTimeMillis(),
+                        completedAt = task?.completedAt,
+                        streak = task?.streak ?: 0,
+                        habitId = task?.habitId,
+                        lastCompletedDate = task?.lastCompletedDate,
+                        completionHistory = task?.completionHistory ?: emptyList(),
+                        reminderTime = reminder
                     )
+                    if (isEditMode && onUpdate != null) {
+                        onUpdate(taskData)
+                    } else {
+                        onCreate(taskData)
+                    }
                 }
             ) {
-                Text("创建")
+                Text(if (isEditMode) "保存" else "创建")
             }
         },
         dismissButton = {
