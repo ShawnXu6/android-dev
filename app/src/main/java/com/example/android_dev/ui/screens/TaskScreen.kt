@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+﻿@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.example.android_dev.ui.screens
 
@@ -12,13 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,36 +32,24 @@ import com.example.android_dev.domain.TaskCategory
 import com.example.android_dev.domain.UserCognitiveSignal
 import com.example.android_dev.engine.SmartTaskEngine
 import com.example.android_dev.ui.components.TaskCard
-import com.example.android_dev.ui.components.TaskEditorDialog
 
-// 任务列表功能：展示、搜索、筛选、编辑、完成和删除所有智能任务。
+// 任务列表功能：展示、筛选、完成和删除所有智能任务。
 @Composable
 fun TaskScreen(
     tasks: List<SmartTask>,
     signal: UserCognitiveSignal,
     onToggleTask: (SmartTask) -> Unit,
-    onDeleteTask: (SmartTask) -> Unit,
-    onUpdateTask: (SmartTask) -> Unit
+    onDeleteTask: (SmartTask) -> Unit
 ) {
     var selectedCategoryName by rememberSaveable { mutableStateOf<String?>(null) }
     var showCompleted by rememberSaveable { mutableStateOf(true) }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
-    var showEditor by rememberSaveable { mutableStateOf(false) }
-    var editingTask by rememberSaveable { mutableStateOf<SmartTask?>(null) }
-    
     val selectedCategory = selectedCategoryName?.let { name ->
         TaskCategory.entries.firstOrNull { it.name == name }
     }
-    
-    val filtered = remember(tasks, selectedCategory, showCompleted, signal, searchQuery) {
+    val filtered = remember(tasks, selectedCategory, showCompleted, signal) {
         tasks
             .filter { selectedCategory == null || it.category == selectedCategory }
             .filter { showCompleted || !it.isCompleted }
-            .filter { 
-                searchQuery.isEmpty() || 
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                it.description.contains(searchQuery, ignoreCase = true)
-            }
             .sortedWith(
                 compareByDescending<SmartTask> { !it.isCompleted }
                     .thenByDescending { SmartTaskEngine.explainPriorityScore(it, signal).totalScore }
@@ -90,16 +74,6 @@ fun TaskScreen(
                     Switch(checked = showCompleted, onCheckedChange = { showCompleted = it })
                 }
             }
-            
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("搜索任务") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "搜索") },
-                placeholder = { Text("输入关键词搜索") }
-            )
-            
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     FilterChip(
@@ -136,27 +110,10 @@ fun TaskScreen(
                     task = task,
                     signal = signal,
                     onToggleTask = { onToggleTask(task) },
-                    onDeleteTask = { onDeleteTask(task) },
-                    onEditTask = { 
-                        editingTask = it
-                        showEditor = true
-                    }
+                    onDeleteTask = { onDeleteTask(task) }
                 )
             }
         }
-    }
-    
-    if (showEditor) {
-        TaskEditorDialog(
-            signal = signal,
-            onDismiss = { 
-                showEditor = false
-                editingTask = null
-            },
-            onCreate = {},
-            onUpdate = onUpdateTask,
-            task = editingTask
-        )
     }
 }
 
