@@ -74,13 +74,6 @@ class SmartTodoViewModel(
         updateTasks(_uiState.value.tasks.filterNot { it.id == task.id })
     }
 
-    // 更新任务功能：替换已有任务并持久化。
-    fun updateTask(updatedTask: SmartTask) {
-        updateTasks(_uiState.value.tasks.map {
-            if (it.id == updatedTask.id) updatedTask else it
-        })
-    }
-
     // 用户状态更新功能：保存专注、精力、压力、情绪、环境和自适应模式。
     fun updateSignal(signal: UserCognitiveSignal) {
         repository.saveSignal(signal)
