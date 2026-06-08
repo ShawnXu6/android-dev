@@ -37,7 +37,6 @@ fun SmartTodoApp(
     onSignalChange: (com.example.android_dev.domain.UserCognitiveSignal) -> Unit,
     onQuickAddTask: (String, String) -> Unit,
     onCreateTask: (com.example.android_dev.domain.SmartTask) -> Unit,
-    onUpdateTask: (com.example.android_dev.domain.SmartTask) -> Unit,
     onToggleTask: (com.example.android_dev.domain.SmartTask) -> Unit,
     onDeleteTask: (com.example.android_dev.domain.SmartTask) -> Unit
 ) {
@@ -95,8 +94,7 @@ fun SmartTodoApp(
                     tasks = uiState.tasks,
                     signal = uiState.signal,
                     onToggleTask = onToggleTask,
-                    onDeleteTask = onDeleteTask,
-                    onUpdateTask = onUpdateTask
+                    onDeleteTask = onDeleteTask
                 )
 
                 SmartTodoTab.INSIGHTS -> InsightScreen(
