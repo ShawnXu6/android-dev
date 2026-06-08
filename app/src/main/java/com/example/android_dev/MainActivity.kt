@@ -9,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.android_dev.data.LocalSmartTodoRepository
-import com.example.android_dev.engine.ReminderManager
 import com.example.android_dev.ui.SmartTodoApp
 import com.example.android_dev.ui.theme.AndroiddevTheme
 import com.example.android_dev.viewmodel.SmartTodoViewModel
@@ -30,33 +29,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val uiState by smartTodoViewModel.uiState.collectAsState()
-                        
-            ReminderManager.rescheduleReminders(applicationContext, uiState.tasks)
 
             AndroiddevTheme(dynamicColor = false) {
                 SmartTodoApp(
                     uiState = uiState,
                     onSignalChange = smartTodoViewModel::updateSignal,
-                    onQuickAddTask = { title, note ->
-                        smartTodoViewModel.quickAddTask(title, note)
-                        ReminderManager.rescheduleReminders(applicationContext, smartTodoViewModel.uiState.value.tasks)
-                    },
-                    onCreateTask = { task ->
-                        smartTodoViewModel.addTask(task)
-                        ReminderManager.rescheduleReminders(applicationContext, smartTodoViewModel.uiState.value.tasks)
-                    },
-                    onUpdateTask = { task ->
-                        smartTodoViewModel.updateTask(task)
-                        ReminderManager.rescheduleReminders(applicationContext, smartTodoViewModel.uiState.value.tasks)
-                    },
-                    onToggleTask = { task ->
-                        smartTodoViewModel.toggleTaskCompletion(task)
-                        ReminderManager.rescheduleReminders(applicationContext, smartTodoViewModel.uiState.value.tasks)
-                    },
-                    onDeleteTask = { task ->
-                        smartTodoViewModel.deleteTask(task)
-                        ReminderManager.rescheduleReminders(applicationContext, smartTodoViewModel.uiState.value.tasks)
-                    }
+                    onQuickAddTask = smartTodoViewModel::quickAddTask,
+                    onCreateTask = smartTodoViewModel::addTask,
+                    onToggleTask = smartTodoViewModel::toggleTaskCompletion,
+                    onDeleteTask = smartTodoViewModel::deleteTask
                 )
             }
         }
