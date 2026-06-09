@@ -34,16 +34,29 @@ fun CognitiveControls(signal: UserCognitiveSignal, onSignalChange: (UserCognitiv
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            Column {
+                Text("状态感知", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "告诉 App 你现在的状态，它会据此调整任务推荐、耗时预估和界面繁简。",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            // 自适应模式开关：开启后，任务过多/状态偏差时今日页会自动切换到极简专注视图。
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("状态感知", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("自适应模式", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "由用户可控信号驱动，避免隐式采集敏感生理数据。",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = if (signal.adaptiveMode) {
+                            "已开启：忙碌时自动精简界面，只留最该做的事。"
+                        } else {
+                            "已关闭：始终显示完整排程视图。"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

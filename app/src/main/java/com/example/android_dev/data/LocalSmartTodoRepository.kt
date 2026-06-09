@@ -6,13 +6,22 @@ import com.example.android_dev.domain.EmotionalTone
 import com.example.android_dev.domain.EnvironmentContext
 import com.example.android_dev.domain.InputModality
 import com.example.android_dev.domain.SmartTask
+import com.example.android_dev.domain.Subtask
 import com.example.android_dev.domain.TaskCategory
+import com.example.android_dev.domain.TaskPriority
+import com.example.android_dev.domain.TaskStatus
 import com.example.android_dev.domain.UserCognitiveSignal
+import java.time.LocalDate
 import org.json.JSONArray
 import org.json.JSONObject
 
-class LocalSmartTodoRepository(context: Context) {
-    private val prefs = context.getSharedPreferences("smart_todo_life", Context.MODE_PRIVATE)
+class LocalSmartTodoRepository(
+    context: Context,
+    username: String = "_guest"
+) {
+    // 按用户名分库功能：每个账户使用独立的 SharedPreferences，实现多用户数据隔离。
+    private val prefs = context.applicationContext
+        .getSharedPreferences("smart_todo_life_${username.ifBlank { "_guest" }}", Context.MODE_PRIVATE)
 
     fun loadTasks(): List<SmartTask> {
         val raw = prefs.getString(KEY_TASKS, null) ?: return seedTasks().also(::saveTasks)
@@ -121,6 +130,27 @@ class LocalSmartTodoRepository(context: Context) {
             .put("lastCompletedDate", lastCompletedDate ?: JSONObject.NULL)
             .put("completionHistory", JSONArray(completionHistory))
             .put("modality", modality.name)
+            .put("dueDate", dueDate?.toString() ?: JSONObject.NULL)
+            .put("priority", priority.name)
+            .put("status", status.name)
+            .put("tags", JSONArray(tags))
+            .put("reminderAt", reminderAt ?: JSONObject.NULL)
+            .put("subtasks", subtasksToJson(subtasks))
+    }
+
+    private fun subtasksToJson(subtasks: List<Subtask>): JSONArray {
+        val array = JSONArray()
+        subtasks.forEach { sub ->
+            array.put(
+                JSONObject()
+                    .put("id", sub.id)
+                    .put("title", sub.title)
+                    .put("estimatedMinutes", sub.estimatedMinutes)
+                    .put("done", sub.done)
+                    .put("plannedDate", sub.plannedDate?.toString() ?: JSONObject.NULL)
+            )
+        }
+        return array
     }
 
     private fun JSONObject.toTask(): SmartTask {
@@ -140,9 +170,42 @@ class LocalSmartTodoRepository(context: Context) {
             habitId = if (isNull("habitId")) null else optString("habitId"),
             lastCompletedDate = if (isNull("lastCompletedDate")) null else optString("lastCompletedDate"),
             completionHistory = optStringArray("completionHistory"),
-            modality = enumOrDefault(optString("modality"), InputModality.TEXT)
+            modality = enumOrDefault(optString("modality"), InputModality.TEXT),
+            dueDate = if (isNull("dueDate")) null else optString("dueDate").toLocalDateOrNull(),
+            // 迁移：旧数据无 priority 时按 importance 推导高/中/低。
+            priority = if (has("priority")) {
+                enumOrDefault(optString("priority"), TaskPriority.MEDIUM)
+            } else {
+                TaskPriority.fromImportance(optInt("importance", 3))
+            },
+            // 迁移：旧数据无 status 时按 completedAt 推导完成/待处理。
+            status = if (has("status")) {
+                enumOrDefault(optString("status"), TaskStatus.TODO)
+            } else {
+                if (!isNull("completedAt") && optLong("completedAt", 0L) > 0L) TaskStatus.DONE else TaskStatus.TODO
+            },
+            tags = optStringArray("tags"),
+            reminderAt = if (isNull("reminderAt")) null else optLong("reminderAt").takeIf { it > 0L },
+            subtasks = optSubtasks("subtasks")
         )
     }
+
+    private fun JSONObject.optSubtasks(key: String): List<Subtask> {
+        val array = optJSONArray(key) ?: return emptyList()
+        return List(array.length()) { index ->
+            val json = array.getJSONObject(index)
+            Subtask(
+                id = json.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                title = json.optString("title", "子任务"),
+                estimatedMinutes = json.optInt("estimatedMinutes", 20).coerceIn(5, 240),
+                done = json.optBoolean("done", false),
+                plannedDate = if (json.isNull("plannedDate")) null else json.optString("plannedDate").toLocalDateOrNull()
+            )
+        }
+    }
+
+    private fun String?.toLocalDateOrNull(): LocalDate? =
+        this?.takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
     private fun JSONObject.optStringArray(key: String): List<String> {
         val array = optJSONArray(key) ?: return emptyList()

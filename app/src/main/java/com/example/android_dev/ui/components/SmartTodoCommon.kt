@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.example.android_dev.domain.CognitiveLoadLevel
 import com.example.android_dev.domain.InsightSeverity
 import com.example.android_dev.domain.TaskCategory
+import com.example.android_dev.domain.TaskPriority
+import com.example.android_dev.domain.TaskStatus
 import kotlin.math.roundToInt
 
 // 底部导航功能：在今日、任务、洞察和统计四个主页面之间切换。
@@ -171,12 +173,13 @@ fun InsightLine(label: String, value: String) {
     HorizontalDivider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.12f))
 }
 
-// 主导航标签功能：定义应用底部导航的四个顶层页面。
+// 主导航标签功能：定义应用底部导航的五个顶层页面（今日 / 看板 / 日历 / 列表 / 我的）。
 enum class SmartTodoTab(val label: String, val mark: String) {
     TODAY("今日", "今"),
-    TASKS("任务", "待"),
-    INSIGHTS("洞察", "智"),
-    STATISTICS("统计", "统")
+    BOARD("看板", "板"),
+    CALENDAR("日历", "历"),
+    TASKS("列表", "单"),
+    PROFILE("我的", "我")
 }
 
 // 百分比格式化功能：把 0 到 1 的浮点值转换成百分比文本。
@@ -193,6 +196,20 @@ fun TaskCategory.tint(): Color = when (this) {
     TaskCategory.LIFE -> Color(0xFF9A6A20)
     TaskCategory.SOCIAL -> Color(0xFFB45347)
     TaskCategory.CREATIVE -> Color(0xFF7D5594)
+}
+
+// 优先级颜色功能：高/中/低三档对应红/橙/绿，给用户直观语义。
+fun TaskPriority.tint(): Color = when (this) {
+    TaskPriority.HIGH -> Color(0xFFB13E4B)
+    TaskPriority.MEDIUM -> Color(0xFFC06A24)
+    TaskPriority.LOW -> Color(0xFF2F7D57)
+}
+
+// 看板状态颜色功能：为待处理/进行中/已完成提供一致的强调色。
+fun TaskStatus.tint(): Color = when (this) {
+    TaskStatus.TODO -> Color(0xFF4D65A8)
+    TaskStatus.IN_PROGRESS -> Color(0xFFC06A24)
+    TaskStatus.DONE -> Color(0xFF2F7D57)
 }
 
 // 认知负荷颜色功能：为不同负荷等级提供一致的 UI 强调色。

@@ -43,7 +43,7 @@ fun CognitiveStatusPanel(snapshot: CognitiveSnapshot, signal: UserCognitiveSigna
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("认知负荷", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("今日忙碌程度", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         text = snapshot.level.label,
                         style = MaterialTheme.typography.headlineSmall,
@@ -70,10 +70,10 @@ fun CognitiveStatusPanel(snapshot: CognitiveSnapshot, signal: UserCognitiveSigna
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
-                MetricPill("视觉", snapshot.visualLoad)
-                MetricPill("记忆", snapshot.memoryLoad)
-                MetricPill("时间", snapshot.temporalPressure)
-                MetricPill("决策", snapshot.decisionFatigue)
+                MetricPill("任务量", snapshot.visualLoad)
+                MetricPill("难度", snapshot.memoryLoad)
+                MetricPill("时间紧", snapshot.temporalPressure)
+                MetricPill("琐碎度", snapshot.decisionFatigue)
                 MetricPill("专注", signal.focus)
             }
         }

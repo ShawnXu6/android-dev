@@ -52,7 +52,17 @@ fun TodayScreen(
     onQuickAddTask: (String, String) -> Unit,
     onToggleTask: (SmartTask) -> Unit
 ) {
-    val simplified = signal.adaptiveMode && snapshot.level >= CognitiveLoadLevel.HIGH
+    // 自适应触发：开启自适应模式后，以下任一满足就切到专注模式——
+    // 综合负荷已达 HIGH、或压力很高(>0.7)、或未完成任务偏多(≥7 项)。
+    val activeCount = tasks.count { !it.isCompleted }
+    val shouldSimplify = signal.adaptiveMode && (
+        snapshot.level >= CognitiveLoadLevel.HIGH ||
+            signal.stress > 0.7f ||
+            activeCount >= 7
+        )
+    // 用户可在专注模式下点「展开完整排程」临时查看全部，不必去关开关。
+    var forceFullSchedule by rememberSaveable { mutableStateOf(false) }
+    val simplified = shouldSimplify && !forceFullSchedule
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -75,10 +85,24 @@ fun TodayScreen(
         CognitiveControls(signal = signal, onSignalChange = onSignalChange)
 
         AnimatedVisibility(visible = !simplified) {
-            SchedulePanel(schedule = schedule)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 若是用户手动展开的（本应精简），给一个收起回专注模式的入口。
+                if (shouldSimplify && forceFullSchedule) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { forceFullSchedule = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("收起，回到专注模式") }
+                }
+                SchedulePanel(schedule = schedule)
+            }
         }
         AnimatedVisibility(visible = simplified) {
-            MinimalFocusPanel(tasks = tasks, nextTask = nextTask)
+            MinimalFocusPanel(
+                tasks = tasks,
+                signal = signal,
+                onToggleTask = onToggleTask,
+                onShowFullSchedule = { forceFullSchedule = true }
+            )
         }
     }
 }

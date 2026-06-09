@@ -47,6 +47,97 @@ enum class InsightSeverity {
     WARNING
 }
 
+// 任务优先级功能：用直观的高/中/低三档表达优先级，并提供排序权重和颜色语义。
+enum class TaskPriority(val label: String, val weight: Int) {
+    HIGH("高", 3),
+    MEDIUM("中", 2),
+    LOW("低", 1);
+
+    companion object {
+        // 兼容旧数据：把历史的 1-5 重要度映射成高/中/低。
+        fun fromImportance(importance: Int): TaskPriority = when {
+            importance >= 4 -> HIGH
+            importance <= 2 -> LOW
+            else -> MEDIUM
+        }
+    }
+}
+
+// 任务状态功能：支撑看板三列（待处理 / 进行中 / 已完成）的流转。
+enum class TaskStatus(val label: String) {
+    TODO("待处理"),
+    IN_PROGRESS("进行中"),
+    DONE("已完成");
+
+    // 看板向前推进：待处理 → 进行中 → 已完成。
+    fun next(): TaskStatus = when (this) {
+        TODO -> IN_PROGRESS
+        IN_PROGRESS -> DONE
+        DONE -> DONE
+    }
+
+    // 看板向后回退：已完成 → 进行中 → 待处理。
+    fun previous(): TaskStatus = when (this) {
+        DONE -> IN_PROGRESS
+        IN_PROGRESS -> TODO
+        TODO -> TODO
+    }
+}
+
+// 子任务功能：承载 AI 拆解或手动添加的步骤，含独立计划日期与完成态。
+data class Subtask(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val estimatedMinutes: Int = 20,
+    val done: Boolean = false,
+    val plannedDate: LocalDate? = null
+)
+
+// AI 拆解来源功能：标注结果是远程大模型生成还是本地启发式兜底。
+enum class AiSource(val label: String) {
+    REMOTE("AI 生成"),
+    LOCAL("本地智能生成")
+}
+
+// AI 拆解结果功能：把拆出的子任务、整体说明和来源打包返回给界面。
+data class AiBreakdownResult(
+    val subtasks: List<Subtask>,
+    val summary: String,
+    val source: AiSource
+)
+
+// 对话角色功能：区分用户消息与 AI 回复。
+enum class ChatRole(val apiName: String) {
+    USER("user"),
+    ASSISTANT("assistant")
+}
+
+// 对话消息功能：承载单条聊天消息的角色、内容和时间。
+data class ChatMessage(
+    val id: String = UUID.randomUUID().toString(),
+    val role: ChatRole,
+    val content: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+// 提取任务功能：从 AI 回复文本里解析出的、可一键加入计划的任务条目（含勾选态供预览）。
+data class ExtractedTask(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val plannedDate: LocalDate? = null,
+    val estimatedMinutes: Int = 30,
+    val priority: TaskPriority = TaskPriority.MEDIUM,
+    val selected: Boolean = true
+)
+
+// 本地账户功能：保存用户名、加盐后的密码哈希和创建时间。
+data class UserAccount(
+    val username: String,
+    val passwordHash: String,
+    val salt: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class SmartTask(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
@@ -63,17 +154,33 @@ data class SmartTask(
     val habitId: String? = null,
     val lastCompletedDate: String? = null,
     val completionHistory: List<String> = emptyList(),
-    val modality: InputModality = InputModality.TEXT
+    val modality: InputModality = InputModality.TEXT,
+    // ===== 新增：截止日期、优先级、看板状态、标签、子任务、提醒 =====
+    val dueDate: LocalDate? = null,
+    val priority: TaskPriority = TaskPriority.MEDIUM,
+    val status: TaskStatus = TaskStatus.TODO,
+    val tags: List<String> = emptyList(),
+    val subtasks: List<Subtask> = emptyList(),
+    val reminderAt: Long? = null
 ) {
+    // 完成判定功能：习惯任务按当日打卡判定，普通任务按 status==DONE 或 completedAt 判定（兼容旧数据）。
     val isCompleted: Boolean
         get() {
-            if (!isHabit) return completedAt != null
+            if (!isHabit) return status == TaskStatus.DONE || completedAt != null
 
             val today = LocalDate.now().toString()
             val completedAtDate = completedAt
                 ?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString() }
             return lastCompletedDate == today || completionHistory.contains(today) || completedAtDate == today
         }
+
+    // 子任务进度功能：返回已完成子任务比例，供卡片显示进度条。
+    val subtaskProgress: Float
+        get() = if (subtasks.isEmpty()) 0f else subtasks.count { it.done }.toFloat() / subtasks.size
+
+    // 逾期判定功能：有截止日期、未完成且截止日早于今天即为逾期。
+    val isOverdue: Boolean
+        get() = dueDate != null && !isCompleted && dueDate.isBefore(LocalDate.now())
 }
 
 data class UserCognitiveSignal(

@@ -1,4 +1,4 @@
-﻿@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.example.android_dev.ui.screens
 
@@ -28,31 +28,50 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.android_dev.domain.SmartTask
-import com.example.android_dev.domain.TaskCategory
+import com.example.android_dev.domain.TaskPriority
 import com.example.android_dev.domain.UserCognitiveSignal
-import com.example.android_dev.engine.SmartTaskEngine
 import com.example.android_dev.ui.components.TaskCard
 
-// 任务列表功能：展示、筛选、完成和删除所有智能任务。
+// 列表排序方式功能：决定每个完成分组内部的排序规则。
+private enum class TaskSortMode(val label: String) {
+    CREATED("按创建时间"),
+    PRIORITY("按优先级")
+}
+
+// 列表视图功能：展示、按优先级筛选、排序、完成、编辑和删除任务。
 @Composable
 fun TaskScreen(
     tasks: List<SmartTask>,
     signal: UserCognitiveSignal,
     onToggleTask: (SmartTask) -> Unit,
-    onDeleteTask: (SmartTask) -> Unit
+    onDeleteTask: (SmartTask) -> Unit,
+    onEditTask: (SmartTask) -> Unit,
+    onUpdateTask: (SmartTask) -> Unit
 ) {
-    var selectedCategoryName by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedPriorityName by rememberSaveable { mutableStateOf<String?>(null) }
+    var sortModeName by rememberSaveable { mutableStateOf(TaskSortMode.CREATED.name) }
     var showCompleted by rememberSaveable { mutableStateOf(true) }
-    val selectedCategory = selectedCategoryName?.let { name ->
-        TaskCategory.entries.firstOrNull { it.name == name }
+    val selectedPriority = selectedPriorityName?.let { name ->
+        TaskPriority.entries.firstOrNull { it.name == name }
     }
-    val filtered = remember(tasks, selectedCategory, showCompleted, signal) {
+    val sortMode = TaskSortMode.entries.firstOrNull { it.name == sortModeName } ?: TaskSortMode.CREATED
+
+    val filtered = remember(tasks, selectedPriority, showCompleted, sortMode) {
+        // 组内按创建时间倒序（新的在上）的比较器。
+        val byCreatedDesc = compareByDescending<SmartTask> { it.createdAt }
+        // 组内排序：优先级模式先按优先级高→低，同级再按创建时间；创建时间模式直接按创建时间。
+        val withinGroup = when (sortMode) {
+            TaskSortMode.PRIORITY ->
+                compareByDescending<SmartTask> { it.priority.weight }.then(byCreatedDesc)
+            TaskSortMode.CREATED -> byCreatedDesc
+        }
+
         tasks
-            .filter { selectedCategory == null || it.category == selectedCategory }
+            .filter { selectedPriority == null || it.priority == selectedPriority }
             .filter { showCompleted || !it.isCompleted }
             .sortedWith(
-                compareByDescending<SmartTask> { !it.isCompleted }
-                    .thenByDescending { SmartTaskEngine.explainPriorityScore(it, signal).totalScore }
+                // 最外层永远是「未完成在上、已完成在下」，再按组内规则排序。
+                compareByDescending<SmartTask> { !it.isCompleted }.then(withinGroup)
             )
     }
 
@@ -68,25 +87,45 @@ fun TaskScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("任务池", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("我的任务", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("显示已完成", style = MaterialTheme.typography.labelMedium)
                     Switch(checked = showCompleted, onCheckedChange = { showCompleted = it })
                 }
             }
+            // 优先级筛选行。
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     FilterChip(
-                        selected = selectedCategory == null,
-                        onClick = { selectedCategoryName = null },
+                        selected = selectedPriority == null,
+                        onClick = { selectedPriorityName = null },
                         label = { Text("全部") }
                     )
                 }
-                items(TaskCategory.entries, key = { it.name }) { category ->
+                items(TaskPriority.entries, key = { it.name }) { priority ->
                     FilterChip(
-                        selected = selectedCategory == category,
-                        onClick = { selectedCategoryName = category.name },
-                        label = { Text(category.label) }
+                        selected = selectedPriority == priority,
+                        onClick = { selectedPriorityName = priority.name },
+                        label = { Text("优先级 ${priority.label}") }
+                    )
+                }
+            }
+            // 排序方式行。
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "排序",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TaskSortMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = sortMode == mode,
+                        onClick = { sortModeName = mode.name },
+                        label = { Text(mode.label) }
                     )
                 }
             }
@@ -99,7 +138,7 @@ fun TaskScreen(
             if (filtered.isEmpty()) {
                 item {
                     Text(
-                        "没有匹配任务。",
+                        "还没有任务，点右下角 + 新建一个吧。",
                         modifier = Modifier.padding(top = 24.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -110,10 +149,11 @@ fun TaskScreen(
                     task = task,
                     signal = signal,
                     onToggleTask = { onToggleTask(task) },
-                    onDeleteTask = { onDeleteTask(task) }
+                    onDeleteTask = { onDeleteTask(task) },
+                    onEditTask = { onEditTask(task) },
+                    onUpdateTask = onUpdateTask
                 )
             }
         }
     }
 }
-

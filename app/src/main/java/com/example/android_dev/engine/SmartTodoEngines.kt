@@ -41,6 +41,8 @@ object SmartTaskEngine {
         val importance = inferImportance(title, note)
         val targetHour = inferTargetHour(title, nowHour)
         val isHabit = listOf("每天", "每日", "习惯", "打卡", "复盘", "喝水").any { title.contains(it) }
+        // 从自然语言里识别截止日期，并由重要度推导高/中/低优先级。
+        val dueDate = com.example.android_dev.ai.DueDateParser.parse("$title $note")
 
         return SmartTask(
             title = title,
@@ -51,7 +53,9 @@ object SmartTaskEngine {
             complexity = complexity,
             targetHour = targetHour,
             isHabit = isHabit,
-            modality = InputModality.TEXT
+            modality = InputModality.TEXT,
+            dueDate = dueDate,
+            priority = com.example.android_dev.domain.TaskPriority.fromImportance(importance)
         )
     }
 

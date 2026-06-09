@@ -1,6 +1,7 @@
 package com.example.android_dev.engine
 
 import com.example.android_dev.domain.SmartTask
+import com.example.android_dev.domain.TaskStatus
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -33,9 +34,21 @@ object TaskCompletionEngine {
 
     private fun toggleOneTimeTaskCompletion(task: SmartTask, nowMillis: Long): SmartTask {
         return if (task.isCompleted) {
-            task.copy(completedAt = null)
+            // 取消完成：回到进行中（若曾推进过）或待处理，并清空完成时间。
+            val restored = if (task.status == TaskStatus.DONE) TaskStatus.TODO else task.status
+            task.copy(completedAt = null, status = restored)
         } else {
-            task.copy(completedAt = nowMillis)
+            // 标记完成：同步置为已完成状态，保证看板与列表一致。
+            task.copy(completedAt = nowMillis, status = TaskStatus.DONE)
+        }
+    }
+
+    // 看板状态切换功能：直接把任务设置到指定列，并同步完成时间。
+    fun setStatus(task: SmartTask, status: TaskStatus, nowMillis: Long = System.currentTimeMillis()): SmartTask {
+        if (task.status == status) return task
+        return when (status) {
+            TaskStatus.DONE -> task.copy(status = TaskStatus.DONE, completedAt = task.completedAt ?: nowMillis)
+            else -> task.copy(status = status, completedAt = null)
         }
     }
 
