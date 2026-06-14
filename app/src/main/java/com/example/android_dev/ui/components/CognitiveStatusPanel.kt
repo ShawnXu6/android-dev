@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.android_dev.domain.CognitiveSnapshot
 import com.example.android_dev.domain.UserCognitiveSignal
@@ -34,47 +35,50 @@ fun CognitiveStatusPanel(snapshot: CognitiveSnapshot, signal: UserCognitiveSigna
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("今日忙碌程度", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("今日忙碌程度", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         text = snapshot.level.label,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
+                // 把负荷进度做成行内细条，和数值徽章并排，省去独立一行的进度条。
+                LinearProgressIndicator(
+                    progress = { snapshot.overall },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    color = snapshot.level.tint(),
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
                 StatusBadge(text = percent(snapshot.overall), color = snapshot.level.tint())
             }
-            LinearProgressIndicator(
-                progress = { snapshot.overall },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                color = snapshot.level.tint(),
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
             Text(
                 text = snapshot.recommendation,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
-                MetricPill("任务量", snapshot.visualLoad)
-                MetricPill("难度", snapshot.memoryLoad)
-                MetricPill("时间紧", snapshot.temporalPressure)
-                MetricPill("琐碎度", snapshot.decisionFatigue)
-                MetricPill("专注", signal.focus)
+                MetricChip("任务量", snapshot.visualLoad)
+                MetricChip("难度", snapshot.memoryLoad)
+                MetricChip("时间紧", snapshot.temporalPressure)
+                MetricChip("琐碎度", snapshot.decisionFatigue)
+                MetricChip("专注", signal.focus)
             }
         }
     }

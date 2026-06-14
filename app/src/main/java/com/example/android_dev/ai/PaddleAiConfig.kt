@@ -18,7 +18,7 @@ object PaddleAiConfig {
     const val MODEL = "ernie-4.5-turbo-128k"
 
     // TODO: 在此填入你的飞桨 AIStudio 访问令牌（Access Token）。留空则使用本地兜底拆解。
-    const val API_TOKEN = "cd8cc85ba5bf76fefc7d4d9d61afff5cabaccc64"
+    const val API_TOKEN = ""
 
     // 连接超时（秒）：连不上就快速失败。
     const val CONNECT_TIMEOUT_SECONDS = 15L

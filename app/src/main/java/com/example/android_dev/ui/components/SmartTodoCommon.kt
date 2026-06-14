@@ -81,6 +81,24 @@ fun MetricPill(label: String, value: Float) {
     }
 }
 
+// 紧凑指标芯片功能：把标签和百分比并排放在一行的小胶囊里，比 MetricPill 更省高度。
+@Composable
+fun MetricChip(label: String, value: Float) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(percent(value.coerceIn(0f, 1f)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 // 状态徽章功能：用强调色展示优先级、耗时、完成状态等短文本。
 @Composable
 fun StatusBadge(text: String, color: Color) {

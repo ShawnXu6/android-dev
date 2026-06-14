@@ -2,21 +2,26 @@
 
 package com.example.android_dev.ui.components
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -46,72 +51,105 @@ fun RecommendedTaskPanel(
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("下一步推荐", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("下一步推荐", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
                         text = task.title,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 StatusBadge("${prediction.minutes} 分", MaterialTheme.colorScheme.primary)
+                // 完成入口缩成图标按钮，省去整行的「标记完成」大按钮。
+                FilledIconButton(
+                    onClick = onToggleTask,
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = "标记完成")
+                }
             }
             Text(
                 text = recommendation?.priority?.explanation
                     ?: "${prediction.rationale}，置信度 ${percent(prediction.confidence)}，不确定性约 ±${prediction.uncertaintyMinutes} 分钟。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            ) {
                 recommendation?.let {
-                    AssistChip(onClick = {}, label = { Text("优先级 ${it.priority.totalScore.roundToInt()}") })
+                    CompactChip("优先级 ${it.priority.totalScore.roundToInt()}")
                 }
-                AssistChip(onClick = {}, label = { Text(task.category.label) })
-                AssistChip(onClick = {}, label = { Text("复杂度 ${task.complexity}/5") })
-                AssistChip(onClick = {}, label = { Text(task.targetHour.hourLabel()) })
+                CompactChip(task.category.label)
+                CompactChip("复杂度 ${task.complexity}/5")
+                CompactChip(task.targetHour.hourLabel())
             }
             recommendation?.priority?.factors
                 ?.sortedByDescending { it.contribution }
-                ?.take(3)
+                ?.take(2)
                 ?.forEach { factor ->
                     RecommendationFactorRow(label = factor.label, value = factor.score, reason = factor.reason)
                 }
-            Button(onClick = onToggleTask, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                Text("标记完成")
-            }
         }
     }
 }
 
 @Composable
 private fun RecommendationFactorRow(label: String, value: Float, reason: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // 紧凑因素行：标签、细进度条、百分比放同一行，理由作为第二行小字。
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            Text(percent(value), style = MaterialTheme.typography.labelMedium)
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            LinearProgressIndicator(
+                progress = { value.coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+            )
+            Text(percent(value), style = MaterialTheme.typography.labelSmall)
         }
-        LinearProgressIndicator(
-            progress = { value.coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(5.dp)
-                .clip(RoundedCornerShape(8.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        Text(
+            reason,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+}
+
+// 紧凑芯片功能：比 AssistChip 更小的只读标签胶囊，用于推荐卡的元信息。
+@Composable
+private fun CompactChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
     }
 }
