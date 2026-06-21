@@ -21,6 +21,7 @@ import com.example.android_dev.ui.auth.AuthScreen
 import com.example.android_dev.ui.theme.AndroiddevTheme
 import com.example.android_dev.ui.theme.AppPalette
 import com.example.android_dev.viewmodel.SmartTodoViewModel
+import com.example.android_dev.data.CountdownRepository
 
 // 应用入口功能：配置边到边显示、登录门、通知权限，并按登录用户挂载 Compose 根组件。
 class MainActivity : ComponentActivity() {
@@ -57,6 +58,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     // 每个登录用户拥有独立的 ViewModel（独立数据分库）。
                     val viewModel = remember(user) { buildViewModel(user) }
+                    val countdowns by viewModel.countdowns.collectAsState()
                     val uiState by viewModel.uiState.collectAsState()
                     val chatState by viewModel.chatState.collectAsState()
 
@@ -83,7 +85,11 @@ class MainActivity : ComponentActivity() {
                         onLogout = {
                             accountRepository.logout()
                             currentUser = null
-                        }
+                        },
+                        countdowns = countdowns,  // 使用订阅的流值
+                        onAddCountdown = viewModel::addCountdown,
+                        onEditCountdown = viewModel::updateCountdown,
+                        onDeleteCountdown = viewModel::deleteCountdown
                     )
                 }
             }
@@ -94,7 +100,8 @@ class MainActivity : ComponentActivity() {
     private fun buildViewModel(username: String): SmartTodoViewModel {
         return SmartTodoViewModel(
             repository = LocalSmartTodoRepository(applicationContext, username),
-            reminderScheduler = ReminderScheduler(applicationContext)
+            reminderScheduler = ReminderScheduler(applicationContext),
+            countdownRepository = CountdownRepository(applicationContext, username)
         )
     }
 

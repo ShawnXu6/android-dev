@@ -66,6 +66,14 @@ import com.example.android_dev.ui.components.tint
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
+import java.time.temporal.ChronoUnit
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Surface
+import com.example.android_dev.domain.Countdown
 
 // 今日页功能：以「列表为中心」的首页布局（对标 Todoist / TickTick / Things）——
 // 顶部进度头 + 当前最该做的一件 → 快速捕捉 → 按「逾期/今天/稍后」分组的任务清单 → 可折叠的「状态与排程」抽屉。
@@ -79,7 +87,8 @@ fun TodayScreen(
     nextRecommendation: TaskRecommendation?,
     onSignalChange: (UserCognitiveSignal) -> Unit,
     onQuickAddTask: (String, String) -> Unit,
-    onToggleTask: (SmartTask) -> Unit
+    onToggleTask: (SmartTask) -> Unit,
+    countdowns: List<Countdown> = emptyList()  // 新增
 ) {
     val today = remember { LocalDate.now() }
     val activeTasks = tasks.filterNot { it.isCompleted }
@@ -104,6 +113,12 @@ fun TodayScreen(
     var todayOpen by rememberSaveable { mutableStateOf(true) }
     var laterOpen by rememberSaveable { mutableStateOf(false) }
     var advancedOpen by rememberSaveable { mutableStateOf(false) }
+    val todayCountdowns = remember(countdowns) {
+        countdowns
+            .filter { !it.targetDate.isBefore(LocalDate.now()) }
+            .sortedBy { ChronoUnit.DAYS.between(LocalDate.now(), it.targetDate) }
+            .take(5)
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -124,6 +139,42 @@ fun TodayScreen(
                 signal = signal,
                 onToggleNext = { nextTask?.let(onToggleTask) }
             )
+        }
+
+        if (todayCountdowns.isNotEmpty()) {
+            item(key = "countdowns") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    todayCountdowns.forEach { countdown ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.clickable { /* 可选跳转 */ }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    countdown.title,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val days = ChronoUnit.DAYS.between(LocalDate.now(), countdown.targetDate).toInt()
+                                Text(
+                                    "还剩 $days 天",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 快速捕捉：单行输入 + 加号；输入后展开备注。

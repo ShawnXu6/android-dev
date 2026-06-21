@@ -40,6 +40,12 @@ import com.example.android_dev.ui.screens.TaskScreen
 import com.example.android_dev.ui.screens.TodayScreen
 import com.example.android_dev.viewmodel.SmartTodoUiState
 import java.time.LocalDate
+import com.example.android_dev.domain.Countdown  // === 新增导入 ===
+import com.example.android_dev.ui.screens.CountdownScreen  // === 新增导入 ===
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.android_dev.ui.screens.CountdownScreen
 
 // 应用壳层功能：顶部栏、底部导航、悬浮新增按钮，并路由今日/看板/日历/列表/我的五个页面。
 @Composable
@@ -61,7 +67,11 @@ fun SmartTodoApp(
     onDeleteTask: (SmartTask) -> Unit,
     onMoveStatus: (SmartTask, TaskStatus) -> Unit,
     onRequestAiBreakdown: (AiBreakdownRequest, (AiBreakdownResult) -> Unit, () -> Unit) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    countdowns: List<Countdown>,
+    onAddCountdown: (Countdown) -> Unit,
+    onEditCountdown: (Countdown) -> Unit,
+    onDeleteCountdown: (String) -> Unit
 ) {
     var selectedTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(SmartTodoTab.TODAY) }
     var showNewTaskEditor by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -69,6 +79,7 @@ fun SmartTodoApp(
     var showInsights by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showStatistics by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showAiChat by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showCountdown by rememberSaveable { mutableStateOf(false) }
 
     // AI 拆解适配器：把对话框的 (goal,dueDate,onResult,onError) 转成仓库请求。
     val aiBridge: (String, LocalDate?, (AiBreakdownResult) -> Unit, () -> Unit) -> Unit =
@@ -127,7 +138,8 @@ fun SmartTodoApp(
                     nextRecommendation = uiState.nextRecommendation,
                     onSignalChange = onSignalChange,
                     onQuickAddTask = onQuickAddTask,
-                    onToggleTask = onToggleTask
+                    onToggleTask = onToggleTask,
+                    countdowns = countdowns  // === 新增传参 ===
                 )
 
                 SmartTodoTab.BOARD -> KanbanScreen(
@@ -140,7 +152,10 @@ fun SmartTodoApp(
                 SmartTodoTab.CALENDAR -> CalendarScreen(
                     tasks = uiState.tasks,
                     onToggleTask = onToggleTask,
-                    onEditTask = { editingTask = it }
+                    onEditTask = { editingTask = it },
+                    countdowns = countdowns,  // === 新增传参 ===
+                    onEditCountdown = onEditCountdown,
+                    onDeleteCountdown = onDeleteCountdown
                 )
 
                 SmartTodoTab.TASKS -> TaskScreen(
@@ -159,6 +174,7 @@ fun SmartTodoApp(
                     onChangeTheme = onChangeTheme,
                     onOpenInsights = { showInsights = true },
                     onOpenStatistics = { showStatistics = true },
+                    onOpenCountdown = { showCountdown = true },  // === 新增回调 ===
                     onLogout = onLogout
                 )
             }
@@ -250,6 +266,21 @@ fun SmartTodoApp(
                     )
                 }
             }
+        }
+    }
+
+    if (showCountdown) {
+        Dialog(
+            onDismissRequest = { showCountdown = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            CountdownScreen(
+                countdowns = countdowns,
+                onAdd = onAddCountdown,
+                onEdit = onEditCountdown,
+                onDelete = onDeleteCountdown,
+                onClose = { showCountdown = false }
+            )
         }
     }
 }

@@ -39,21 +39,36 @@ import com.example.android_dev.ui.components.StatusBadge
 import com.example.android_dev.ui.components.tint
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
+import androidx.compose.ui.graphics.Color
+import com.example.android_dev.ui.components.StatusBadge
+import com.example.android_dev.domain.Countdown
+import com.example.android_dev.ui.components.StatusBadge
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import com.example.android_dev.ui.components.CountdownDialog
 
 // 日历视图功能：按截止日期把任务铺到月历格子，点选某天查看当天任务。
 @Composable
 fun CalendarScreen(
     tasks: List<SmartTask>,
     onToggleTask: (SmartTask) -> Unit,
-    onEditTask: (SmartTask) -> Unit
+    onEditTask: (SmartTask) -> Unit,
+    countdowns: List<Countdown> = emptyList(), // 新增
+    onEditCountdown: (Countdown) -> Unit,   // 新增
+    onDeleteCountdown: (String) -> Unit     // 新增
 ) {
     val today = remember { LocalDate.now() }
     var visibleMonth by remember { mutableStateOf(YearMonth.from(today)) }
     var selectedDate by remember { mutableStateOf(today) }
+    var editingCountdown by remember { mutableStateOf<Countdown?>(null) }
 
     // 按截止日期分组任务，用于在格子上显示数量圆点。
     val tasksByDate = remember(tasks) {
         tasks.filter { it.dueDate != null }.groupBy { it.dueDate!! }
+    }
+    val countdownsByDate = remember(countdowns) {
+        countdowns.groupBy { it.targetDate }
     }
 
     Column(
@@ -96,6 +111,7 @@ fun CalendarScreen(
             today = today,
             selectedDate = selectedDate,
             tasksByDate = tasksByDate,
+            countdownsByDate = countdownsByDate,  // 新增
             onSelect = { selectedDate = it }
         )
 
@@ -106,6 +122,60 @@ fun CalendarScreen(
         )
 
         val dayTasks = tasksByDate[selectedDate].orEmpty()
+        val dayCountdowns = remember(selectedDate, countdowns) {
+            countdowns.filter { it.targetDate == selectedDate }
+        }
+
+        if (dayCountdowns.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("倒计时", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                dayCountdowns.forEach { countdown ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            // 第一行：标题 + 状态徽章（右侧）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(countdown.title, fontWeight = FontWeight.SemiBold)
+                                    if (countdown.note.isNotBlank()) {
+                                        Text(
+                                            countdown.note,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                val days = ChronoUnit.DAYS.between(LocalDate.now(), countdown.targetDate).toInt()
+                                StatusBadge(
+                                    if (days < 0) "已过 ${-days} 天" else "还剩 $days 天",
+                                    if (days < 0) Color(0xFFB13E4B) else Color(0xFF2F6F63)
+                                )
+                            }
+                            // 第二行：编辑和删除按钮（右对齐）
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { editingCountdown = countdown }) {
+                                    Text("编辑")
+                                }
+                                TextButton(onClick = { onDeleteCountdown(countdown.id) }) {
+                                    Text("删除", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         if (dayTasks.isEmpty()) {
             Text("这一天没有截止任务。", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         } else {
@@ -141,6 +211,16 @@ fun CalendarScreen(
             }
         }
     }
+    editingCountdown?.let { countdown ->
+        CountdownDialog(
+            initialCountdown = countdown,
+            onDismiss = { editingCountdown = null },
+            onConfirm = { updated ->
+                onEditCountdown(updated)
+                editingCountdown = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -149,6 +229,7 @@ private fun MonthGrid(
     today: LocalDate,
     selectedDate: LocalDate,
     tasksByDate: Map<LocalDate, List<SmartTask>>,
+    countdownsByDate: Map<LocalDate, List<Countdown>>,  // 新增
     onSelect: (LocalDate) -> Unit
 ) {
     val firstDay = month.atDay(1)
@@ -173,6 +254,8 @@ private fun MonthGrid(
                                 isSelected = date == selectedDate,
                                 taskCount = tasksByDate[date]?.size ?: 0,
                                 hasOverdue = tasksByDate[date]?.any { it.isOverdue } == true,
+                                hasCountdown = countdownsByDate[date].isNullOrEmpty() == false,
+                                isCountdownFuture = !date.isBefore(today),  // 新增：当天或未来为 true// 新增
                                 onClick = { onSelect(date) }
                             )
                         }
@@ -190,6 +273,8 @@ private fun DayCell(
     isSelected: Boolean,
     taskCount: Int,
     hasOverdue: Boolean,
+    hasCountdown: Boolean,  // 新增
+    isCountdownFuture: Boolean,   // 新增
     onClick: () -> Unit
 ) {
     val container = when {
@@ -226,6 +311,21 @@ private fun DayCell(
                         .background(
                             if (hasOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
+                )
+            }
+            // 倒计时点（新增颜色区分）
+            if (hasCountdown) {
+                val dotColor = if (isCountdownFuture) {
+                    Color(0xFF9C27B0)  // 紫色
+                } else {
+                    Color(0xFFFFC107)  // 黄色（琥珀色）
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(top = if (taskCount > 0) 10.dp else 2.dp)
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
                 )
             }
         }

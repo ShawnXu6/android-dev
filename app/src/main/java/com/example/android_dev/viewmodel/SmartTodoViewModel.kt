@@ -33,6 +33,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.example.android_dev.data.CountdownRepository
+import com.example.android_dev.domain.Countdown
+import kotlinx.coroutines.flow.asStateFlow
 
 // 主界面状态功能：集中承载页面渲染所需的原始数据和派生数据。
 data class SmartTodoUiState(
@@ -63,6 +66,7 @@ class SmartTodoViewModel(
     private val reminderScheduler: ReminderScheduler? = null,
     private val aiPlannerRepository: AiTaskPlannerRepository = AiTaskPlannerRepository(),
     private val aiChatClient: AiChatClient = AiChatClient(),
+    private val countdownRepository: CountdownRepository,  // 新增
     private val currentHour: Int = LocalTime.now().hour,
     private val zoneId: ZoneId = ZoneId.systemDefault()
 ) : ViewModel() {
@@ -272,4 +276,30 @@ class SmartTodoViewModel(
             if (it.id == task.id) TaskCompletionEngine.toggleCompletion(it, zoneId = zoneId) else it
         }
     }
+
+    private val _countdowns = MutableStateFlow(countdownRepository.loadAll())
+    val countdowns: StateFlow<List<Countdown>> = _countdowns.asStateFlow()
+
+    fun addCountdown(countdown: Countdown) {
+        val newList = _countdowns.value + countdown
+        countdownRepository.saveAll(newList)
+        _countdowns.value = newList
+        reminderScheduler?.scheduleCountdownReminder(countdown)
+    }
+
+    fun updateCountdown(countdown: Countdown) {
+        val newList = _countdowns.value.map { if (it.id == countdown.id) countdown else it }
+        countdownRepository.saveAll(newList)
+        _countdowns.value = newList
+        reminderScheduler?.cancelCountdownReminder(countdown.id)
+        reminderScheduler?.scheduleCountdownReminder(countdown)
+    }
+
+    fun deleteCountdown(id: String) {
+        val newList = _countdowns.value.filterNot { it.id == id }
+        countdownRepository.saveAll(newList)
+        _countdowns.value = newList
+        reminderScheduler?.cancelCountdownReminder(id)
+    }
+
 }

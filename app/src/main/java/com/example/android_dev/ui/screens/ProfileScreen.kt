@@ -41,6 +41,7 @@ fun ProfileScreen(
     onChangeTheme: (AppPalette) -> Unit,
     onOpenInsights: () -> Unit,
     onOpenStatistics: () -> Unit,
+    onOpenCountdown: () -> Unit,  // 新增
     onLogout: () -> Unit
 ) {
     val isGuest = username == AccountRepository.GUEST
@@ -117,6 +118,9 @@ fun ProfileScreen(
         }
         OutlinedButton(onClick = onOpenStatistics, modifier = Modifier.fillMaxWidth()) {
             Text("📊 统计 / 热力图 / 成就")
+        }
+        OutlinedButton(onClick = onOpenCountdown, modifier = Modifier.fillMaxWidth()) {
+            Text("⏳ 未来倒计时")
         }
 
         Button(
